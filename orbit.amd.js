@@ -1053,6 +1053,10 @@ define('orbit/lib/diffs', ['exports', 'orbit/lib/eq', 'orbit/lib/objects', 'orbi
                 bi++;
               }
             }
+          } else if (a instanceof Date) {
+            if (a.getTime() === b.getTime()) return;
+            if (d === undefined) d = [];
+            d.push({op: 'replace', path: basePath, value: objects.clone(b)});
 
           } else { // general (non-array) object
             for (i in b) {

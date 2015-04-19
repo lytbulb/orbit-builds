@@ -988,12 +988,17 @@ define('orbit-common/memory-source', ['exports', 'orbit/main', 'orbit/lib/assert
       var linkValue = this.retrieveLink(type, id, link);
 
       if(linkValue === undefined) throw new exceptions.LinkNotFoundException(type, id, link);
-      return this._fetchRecord(linkType, linkValue, options);
+      if(linkValue === null) return null;
+
+      return objects.isArray(linkValue)
+             ? this._fetchRecords(linkType, linkValue, options)
+             : this._fetchRecord(linkType, linkValue, options);
     },
 
     _parseInclude: function(include) {
       if (!include) return undefined;
-      if (!objects.isArray(include)) return include;
+      if (objects.isObject(include) && !objects.isArray(include)) return include;
+      if (!objects.isArray(include)) include = [include];
 
       var parsed = {};
 
