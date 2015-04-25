@@ -385,7 +385,7 @@ define('orbit-common/jsonapi-source', ['exports', 'orbit/main', 'orbit/lib/asser
       var _this = this;
       return this.ajax(this.resourceLinkURL(type, id, link), 'GET').then(
         function(raw) {
-          var linkDef = _this.schema.models[type].links[link];
+          var linkDef = _this.schema.linkPropertiesFor(type, link);
           var relId = _this.serializer.deserializeLink(linkDef.model, raw);
 
           return _this.settleTransforms().then(function() {
@@ -564,7 +564,7 @@ define('orbit-common/jsonapi-source', ['exports', 'orbit/main', 'orbit/lib/asser
       var link = operation.path[3];
       var relId = operation.path[4] || operation.value;
 
-      var linkDef = this.schema.models[type].links[link];
+      var linkDef = this.schema.linkPropertiesFor(type, link);
       var relType = linkDef.model;
       var relResourceType = this.serializer.resourceType(relType);
       var relResourceId = this.serializer.resourceId(relType, relId);
@@ -587,7 +587,7 @@ define('orbit-common/jsonapi-source', ['exports', 'orbit/main', 'orbit/lib/asser
       var id = operation.path[1];
       var link = operation.path[3];
       var relId = operation.path[4] || operation.value;
-      var linkDef = this.schema.models[type].links[link];
+      var linkDef = this.schema.linkPropertiesFor(type, link);
       var relType = linkDef.model;
       var relResourceId = this.serializer.resourceId(relType, relId);
       var remoteOp;
@@ -642,7 +642,7 @@ define('orbit-common/jsonapi-source', ['exports', 'orbit/main', 'orbit/lib/asser
       var type = operation.path[0];
       var id = operation.path[1];
       var link = operation.path[3];
-      var linkDef = this.schema.models[type].links[link];
+      var linkDef = this.schema.linkPropertiesFor(type, link);
       var remoteOp;
 
       if (linkDef.type === 'hasMany') {
@@ -689,7 +689,7 @@ define('orbit-common/jsonapi-source', ['exports', 'orbit/main', 'orbit/lib/asser
         relId = Object.keys(relId);
       }
 
-      var linkDef = this.schema.models[type].links[link];
+      var linkDef = this.schema.linkPropertiesFor(type, link);
       var relType = linkDef.model;
       var relResourceType = this.serializer.resourceType(relType);
       var relResourceId = this.serializer.resourceId(relType, relId);
@@ -718,7 +718,7 @@ define('orbit-common/jsonapi-source', ['exports', 'orbit/main', 'orbit/lib/asser
         relId = Object.keys(relId);
       }
 
-      var linkDef = this.schema.models[type].links[link];
+      var linkDef = this.schema.linkPropertiesFor(type, link);
       var relType = linkDef.model;
       var relResourceId = this.serializer.resourceId(relType, relId);
       var remoteOp;
@@ -978,7 +978,7 @@ define('orbit-common/jsonapi-source', ['exports', 'orbit/main', 'orbit/lib/asser
       url += '/links/' + this.serializer.resourceLink(type, link);
 
       if (relId) {
-        var linkDef = this.schema.models[type].links[link];
+        var linkDef = this.schema.linkPropertiesFor(type, link);
 
         url += '/' + this._resourceIdURLSegment(linkDef.model, relId);
       }
