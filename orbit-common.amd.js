@@ -11,6 +11,8 @@ define('orbit-common', ['exports', 'orbit-common/main', 'orbit-common/cache', 'o
 	OC['default'].OperationNotAllowed = exceptions.OperationNotAllowed;
 	OC['default'].RecordNotFoundException = exceptions.RecordNotFoundException;
 	OC['default'].LinkNotFoundException = exceptions.LinkNotFoundException;
+	OC['default'].ModelNotRegisteredException = exceptions.ModelNotRegisteredException;
+	OC['default'].LinkNotRegisteredException = exceptions.LinkNotRegisteredException;
 	OC['default'].RecordAlreadyExistsException = exceptions.RecordAlreadyExistsException;
 
 	exports['default'] = OC['default'];
@@ -356,7 +358,7 @@ define('orbit-common/cache', ['exports', 'orbit/document', 'orbit/evented', 'orb
           // when a whole record is added, add inverse links for every link
           if (value.__rel) {
             Object.keys(value.__rel).forEach(function(link) {
-              linkSchema = _this.schema.linkPropertiesFor(type, link);
+              linkSchema = _this.schema.linkDefinition(type, link);
               linkValue = value.__rel[link];
 
               if (linkSchema.type === 'hasMany') {
@@ -373,7 +375,7 @@ define('orbit-common/cache', ['exports', 'orbit/document', 'orbit/evented', 'orb
         } else if (path.length > 3) {
           var link = path[3];
 
-          linkSchema = _this.schema.linkPropertiesFor(type, link);
+          linkSchema = _this.schema.linkDefinition(type, link);
 
           if (path.length === 5) {
             linkValue = path[4];
@@ -455,7 +457,7 @@ define('orbit-common/cache', ['exports', 'orbit/document', 'orbit/evented', 'orb
           // when a whole record is removed, remove references corresponding to each link
           if (value.__rel) {
             Object.keys(value.__rel).forEach(function(link) {
-              linkSchema = _this.schema.linkPropertiesFor(type, link);
+              linkSchema = _this.schema.linkDefinition(type, link);
               linkValue = value.__rel[link];
 
               if (linkSchema.type === 'hasMany') {
@@ -472,7 +474,7 @@ define('orbit-common/cache', ['exports', 'orbit/document', 'orbit/evented', 'orb
         } else if (path.length > 3) {
           var link = path[3];
 
-          linkSchema = _this.schema.linkPropertiesFor(type, link);
+          linkSchema = _this.schema.linkDefinition(type, link);
 
           if (path.length === 5) {
             linkValue = path[4];
@@ -689,7 +691,7 @@ define('orbit-common/cache', ['exports', 'orbit/document', 'orbit/evented', 'orb
     },
 
     _addLinkOp: function(type, id, key, value) {
-      var linkDef = this.schema.linkPropertiesFor(type, key);
+      var linkDef = this.schema.linkDefinition(type, key);
       var path = [type, id, '__rel', key];
       var op;
 
@@ -760,6 +762,23 @@ define('orbit-common/lib/exceptions', ['exports', 'orbit/lib/exceptions'], funct
     name: 'OC.OperationNotAllowed',
   });
 
+  var ModelNotRegisteredException = exceptions.Exception.extend({
+    name: 'OC.ModelNotRegisteredException',
+    init: function(model) {
+      this.model = model;
+      this._super('model "' + model + '" not found');
+    },
+  });
+
+  var LinkNotRegisteredException = exceptions.Exception.extend({
+    name: 'OC.LinkNotRegisteredException',
+    init: function(model, link) {
+      this.model = model;
+      this.link = link;
+      this._super('link "' + model + "#" + link + '" not registered');
+    },
+  });
+
 
   var _RecordException = exceptions.Exception.extend({
     init: function(type, record, key) {
@@ -818,6 +837,7 @@ define('orbit-common/lib/exceptions', ['exports', 'orbit/lib/exceptions'], funct
   exports.RecordNotFoundException = RecordNotFoundException;
   exports.LinkNotFoundException = LinkNotFoundException;
   exports.RecordAlreadyExistsException = RecordAlreadyExistsException;
+  exports.ModelNotRegisteredException = ModelNotRegisteredException;
 
 });
 define('orbit-common/main', ['exports'], function (exports) {
@@ -1005,7 +1025,7 @@ define('orbit-common/memory-source', ['exports', 'orbit/main', 'orbit/lib/assert
             relId = record.__rel[link];
 
             if (relId) {
-              var linkDef = _this.schema.linkPropertiesFor(type, link);
+              var linkDef = _this.schema.linkDefinition(type, link);
               if (linkDef.type === 'hasMany') {
                 relId = Object.keys(relId);
               }
@@ -1201,12 +1221,20 @@ define('orbit-common/schema', ['exports', 'orbit/lib/objects', 'orbit/lib/uuid',
       return record;
     },
 
+    modelDefinition: function(model) {
+      var modelSchema = this.models[model];
+      if (!modelSchema) {
+        throw new exceptions.ModelNotRegisteredException(model);
+      }
+      return modelSchema;
+    },
+
     initDefaults: function(model, record) {
       if (!record.__normalized) {
         throw new exceptions.OperationNotAllowed('Schema.initDefaults requires a normalized record');
       }
 
-      var modelSchema = this.models[model],
+      var modelSchema = this.modelDefinition(model),
           keys = modelSchema.keys,
           attributes = modelSchema.attributes,
           links = modelSchema.links;
@@ -1245,7 +1273,7 @@ define('orbit-common/schema', ['exports', 'orbit/lib/objects', 'orbit/lib/uuid',
     },
 
     primaryToSecondaryKey: function(model, secondaryKeyName, primaryKeyValue, autoGenerate) {
-      var modelSchema = this.models[model];
+      var modelSchema = this.modelDefinition(model);
       var secondaryKey = modelSchema.keys[secondaryKeyName];
 
       var value = secondaryKey.primaryToSecondaryKeyMap[primaryKeyValue];
@@ -1260,7 +1288,7 @@ define('orbit-common/schema', ['exports', 'orbit/lib/objects', 'orbit/lib/uuid',
     },
 
     secondaryToPrimaryKey: function(model, secondaryKeyName, secondaryKeyValue, autoGenerate) {
-      var modelSchema = this.models[model];
+      var modelSchema = this.modelDefinition(model);
       var secondaryKey = modelSchema.keys[secondaryKeyName];
 
       var value = secondaryKey.secondaryToPrimaryKeyMap[secondaryKeyValue];
@@ -1284,7 +1312,7 @@ define('orbit-common/schema', ['exports', 'orbit/lib/objects', 'orbit/lib/uuid',
     registerAllKeys: function(data) {
       if (data) {
         Object.keys(data).forEach(function(type) {
-          var modelSchema = this.models[type];
+          var modelSchema = this.modelDefinition(type);
 
           if (modelSchema && modelSchema.secondaryKeys) {
             var records = data[type];
@@ -1336,12 +1364,11 @@ define('orbit-common/schema', ['exports', 'orbit/lib/objects', 'orbit/lib/uuid',
       }
     },
 
-    linkPropertiesFor: function(type, link){
-      var model = this.models[type];
-      if(!model) throw new Error("Type '" + type + "' not found for '" + type + "." + link + "'");
+    linkDefinition: function(type, link){
+      var model = this.modelDefinition(type);
 
       var linkProperties = model.links[link];
-      if(!linkProperties) throw new Error("Link '" + link + "' not found for '" + type + "." + link + "'");
+      if(!linkProperties) throw new exceptions.LinkNotRegisteredException(type, link);
 
       return linkProperties;
     },
@@ -1510,7 +1537,7 @@ define('orbit-common/source', ['exports', 'orbit/main', 'orbit/document', 'orbit
 
     _findLinked: function(type, id, link, options){
       var modelId = this.getId(type, id);
-      var linkType = this.schema.linkPropertiesFor(type, link).model;
+      var linkType = this.schema.linkDefinition(type, link);
       var linkValue = this.retrieveLink(type, modelId, link);
 
       if(linkValue === undefined) throw new exceptions.LinkNotFoundException(type, id, link);
