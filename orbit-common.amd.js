@@ -893,13 +893,11 @@ define('orbit-common/memory-source', ['exports', 'orbit/main', 'orbit/lib/assert
     // Requestable interface implementation
     /////////////////////////////////////////////////////////////////////////////
 
-    _find: function(type, id, options) {
+    _find: function(type, id) {
       var _this = this,
           modelSchema = this.schema.models[type],
           pk = modelSchema.primaryKey.name,
           result;
-
-      options = options || {};
 
       return new Orbit['default'].Promise(function(resolve, reject) {
         if (objects.isNone(id)) {
@@ -929,20 +927,17 @@ define('orbit-common/memory-source', ['exports', 'orbit/main', 'orbit/lib/assert
             result = null;
             id = notFound;
           }
-          else if(options.include) {
-            _this._fetchRecords(type, id, options);
-          }
 
         } else if (id !== null && typeof id === 'object') {
           if (id[pk]) {
-            result = _this._fetchRecord(type, id[pk], options);
+            result = _this.retrieve([type, id[pk]]);
 
           } else {
             result = _this._filter.call(_this, type, id);
           }
 
         } else {
-          result = _this._fetchRecord(type, id, options);
+          result = _this.retrieve([type, id]);
         }
 
         if (result) {
@@ -951,63 +946,6 @@ define('orbit-common/memory-source', ['exports', 'orbit/main', 'orbit/lib/assert
           reject(new exceptions.RecordNotFoundException(type, id));
         }
       });
-    },
-
-    _fetchRecords: function(type, ids, options) {
-      var records = [];
-
-      for (var i = 0, l = ids.length; i < l; i++) {
-        var record = this._fetchRecord(type, ids[i], options);
-        records.push(record);
-      }
-
-      return records;
-    },
-
-    _fetchRecord: function(type, id, options) {
-      var _this = this;
-      var record = this.retrieve([type, id]);
-      if(!record) throw new exceptions.RecordNotFoundException(type, id);
-
-      var include = this._parseInclude(options.include);
-
-      if(include) {
-        Object.keys(include).forEach(function(link){
-          _this._fetchLinked(type, id, link, objects.merge(options, {include: include[link]}));
-        });
-      }
-
-      return record;
-    },
-
-    _fetchLinked: function(type, id, link, options) {
-      var linkType = this.schema.models[type].links[link].model;
-      var linkValue = this.retrieveLink(type, id, link);
-
-      if(linkValue === undefined) throw new exceptions.LinkNotFoundException(type, id, link);
-      if(linkValue === null) return null;
-
-      return objects.isArray(linkValue)
-             ? this._fetchRecords(linkType, linkValue, options)
-             : this._fetchRecord(linkType, linkValue, options);
-    },
-
-    _parseInclude: function(include) {
-      if (!include) return undefined;
-      if (objects.isObject(include) && !objects.isArray(include)) return include;
-      if (!objects.isArray(include)) include = [include];
-
-      var parsed = {};
-
-      include.forEach(function(inclusion){
-        var current = parsed;
-        inclusion.split(".").forEach(function(link){
-          current[link] = current[link] || {};
-          current = current[link];
-        });
-      });
-
-      return parsed;
     },
 
     _findLink: function(type, id, link) {
@@ -1480,7 +1418,7 @@ define('orbit-common/serializer', ['exports', 'orbit/lib/objects', 'orbit/lib/st
   exports['default'] = Serializer;
 
 });
-define('orbit-common/source', ['exports', 'orbit/main', 'orbit/document', 'orbit/transformable', 'orbit/requestable', 'orbit/lib/assert', 'orbit/lib/stubs', 'orbit/lib/objects', 'orbit-common/cache', 'orbit/operation', 'orbit-common/lib/exceptions'], function (exports, Orbit, Document, Transformable, Requestable, assert, stubs, objects, Cache, Operation, exceptions) {
+define('orbit-common/source', ['exports', 'orbit/main', 'orbit/document', 'orbit/transformable', 'orbit/requestable', 'orbit/lib/assert', 'orbit/lib/stubs', 'orbit/lib/objects', 'orbit-common/cache', 'orbit/operation'], function (exports, Orbit, Document, Transformable, Requestable, assert, stubs, objects, Cache, Operation) {
 
   'use strict';
 
@@ -1535,15 +1473,34 @@ define('orbit-common/source', ['exports', 'orbit/main', 'orbit/document', 'orbit
 
     _findLink: stubs.required,
 
-    _findLinked: function(type, id, link, options){
-      var modelId = this.getId(type, id);
-      var linkType = this.schema.linkDefinition(type, link);
-      var linkValue = this.retrieveLink(type, modelId, link);
+    _findLinked: function(type, id, link, relId) {
+      var _this = this;
+      var linkDef = _this.schema.linkDefinition(type, link);
+      var relType = linkDef.model;
 
-      if(linkValue === undefined) throw new exceptions.LinkNotFoundException(type, id, link);
-      if(linkValue === null) return null;
+      id = this.getId(type, id);
 
-      return this._find(linkType, linkValue, options);
+      if (relId === undefined) {
+        relId = this.retrieveLink(type, id, link);
+      }
+
+      if (this._isLinkEmpty(linkDef.type, relId)) {
+        return new Orbit['default'].Promise(function(resolve) {
+          resolve(relId);
+        });
+
+      } else if (relId) {
+        return this.find(relType, relId);
+
+      } else {
+        return this.findLink(type, id, link).then(function(relId) {
+          if (_this._isLinkEmpty(linkDef.type, relId)) {
+            return relId;
+          } else {
+            return _this.find(relType, relId);
+          }
+        });
+      }
     },
 
     _add: function(type, data) {
