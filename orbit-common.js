@@ -67,7 +67,6 @@ define('orbit-common/cache', ['exports', 'orbit-common/main', 'orbit/document', 
     },
 
     _registerModel: function(model) {
-      console.log("register model", model);
       var modelRootPath = [model];
       if (!this.retrieve(modelRootPath)) {
         this._doc.add(modelRootPath, {});
