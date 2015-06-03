@@ -878,7 +878,7 @@ define('orbit-common/memory-source', ['exports', 'orbit/main', 'orbit-common/mai
   exports['default'] = MemorySource;
 
 });
-define('orbit-common/operation-encoder', ['exports', 'orbit/lib/objects', 'orbit-common/lib/exceptions', 'orbit/operation'], function (exports, objects, exceptions, Operation) {
+define('orbit-common/operation-encoder', ['exports', 'orbit-common/main', 'orbit/lib/objects', 'orbit-common/lib/exceptions', 'orbit/operation'], function (exports, OC, objects, exceptions, Operation) {
 
   'use strict';
 
@@ -903,7 +903,7 @@ define('orbit-common/operation-encoder', ['exports', 'orbit/lib/objects', 'orbit
 
         if(linkType === 'hasMany'){
           if(path.length === 4){
-            if(objects.isObject(value) && ['add', 'replace'].indexOf(op) !== -1) return op + 'HasMany';
+            if(objects.isObject(value) || value === OC['default'].LINK_NOT_INITIALIZED && ['add', 'replace'].indexOf(op) !== -1) return op + 'HasMany';
             if(op === 'remove') return 'removeHasMany';
           }
           else if(path.length === 5){
@@ -1044,10 +1044,11 @@ define('orbit-common/operation-processors/related-inverse-links', ['exports', 'o
 
         Object.keys(record.__rel).forEach(function(link) {
           linkDef = schema.linkDefinition(type, link);
+          var linkValue = record.__rel[link];
 
-          if (linkDef.inverse) {
-            var linkValue = linkDef.type === 'hasMany' ? Object.keys(record.__rel[link]) : record.__rel[link];
-            var linkOps = relatedLinkOps(linkValue, linkDef);
+          if (linkDef.inverse && linkValue !== OC['default'].LINK_NOT_INITIALIZED) {
+            var relIds = linkDef.type === 'hasMany' ? Object.keys(linkValue||{}) : linkValue;
+            var linkOps = relatedLinkOps(relIds, linkDef);
 
             for(var i = 0; i < linkOps.length; i++){
               ops.push(linkOps[i]);
@@ -1059,16 +1060,17 @@ define('orbit-common/operation-processors/related-inverse-links', ['exports', 'o
       }
 
       function removeRelatedLinksOpsForRecord(record){
-        if (!record.__rel) return [];
+        if (!record || !record.__rel) return [];
         var linkDef;
         var ops = [];
 
         Object.keys(record.__rel).forEach(function(link) {
           linkDef = schema.linkDefinition(type, link);
+          var linkValue = record.__rel[link];
 
-          if (linkDef.inverse) {
-            var linkValue = linkDef.type === 'hasMany' ? Object.keys(record.__rel[link]) : record.__rel[link];
-            var linkOps = relatedLinkOps(linkValue, linkDef);
+          if (linkDef.inverse && linkValue !== OC['default'].LINK_NOT_INITIALIZED) {
+            var relIds = linkDef.type === 'hasMany' ? Object.keys(linkValue||{}) : linkValue;
+            var linkOps = relatedLinkOps(relIds, linkDef);
 
             for(var i = 0; i < linkOps.length; i++){
               ops.push(linkOps[i]);
