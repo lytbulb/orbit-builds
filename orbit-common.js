@@ -1037,42 +1037,34 @@ define('orbit-common/operation-processors/related-inverse-links', ['exports', 'o
       var operationType = this._operationEncoder.identify(operation);
 
       function relatedLinkOps(linkValue, linkDef){
-        if(linkValue === OC['default'].LINK_NOT_INITIALIZED) return [];
         linkDef = linkDef || schema.linkDefinition(type, path[3]);
-        var relIds = linkDef.type === 'hasMany' ? Object.keys(linkValue||{}) : linkValue;
         var op = operation.op;
         var ignoredPaths = op === 'remove' ? condemnedPaths : [];
-        return _this._relatedLinkOps(linkDef, relIds, path[1], operation, ignoredPaths);
+        return _this._relatedLinkOps(linkDef, linkValue, path[1], operation, ignoredPaths);
       }
 
-      function addRelatedLinksOpsForRecord(record){
-        if (!record.__rel) return;
-        var ops = [];
-
-        Object.keys(record.__rel).forEach(function(link) {
-          var linkDef = schema.linkDefinition(type, link);
-
-          if (linkDef.inverse) {
-            var linkOps = relatedLinkOps(record.__rel[link], linkDef);
-
-            for(var i = 0; i < linkOps.length; i++){
-              ops.push(linkOps[i]);
-            }
-          }
-        });
-
-        return ops;
+      function relatedHasManyOps(linkValue){
+        if(linkValue === OC['default'].LINK_NOT_INITIALIZED) return [];
+        return relatedLinkOps(Object.keys(linkValue));
       }
 
-      function removeRelatedLinksOpsForRecord(record){
+      function relatedHasOneOps(linkValue){
+        if(linkValue === OC['default'].LINK_NOT_INITIALIZED) return [];
+        return relatedLinkOps(linkValue);
+      }
+
+      function relatedLinksOpsForRecord(record){
         if (!record || !record.__rel) return [];
+        var linkDef;
         var ops = [];
 
         Object.keys(record.__rel).forEach(function(link) {
-          var linkDef = schema.linkDefinition(type, link);
+          linkDef = schema.linkDefinition(type, link);
+          var linkValue = record.__rel[link];
 
-          if (linkDef.inverse) {
-            var linkOps = relatedLinkOps(record.__rel[link], linkDef);
+          if (linkDef.inverse && linkValue !== OC['default'].LINK_NOT_INITIALIZED) {
+            var relIds = linkDef.type === 'hasMany' ? Object.keys(linkValue||{}) : linkValue;
+            var linkOps = relatedLinkOps(relIds, linkDef);
 
             for(var i = 0; i < linkOps.length; i++){
               ops.push(linkOps[i]);
@@ -1084,18 +1076,18 @@ define('orbit-common/operation-processors/related-inverse-links', ['exports', 'o
       }
 
       switch (operationType) {
-        case 'addHasOne': return relatedLinkOps(value);
-        case 'replaceHasOne': return relatedLinkOps(value);
-        case 'removeHasOne': return relatedLinkOps(this._retrieve(path));
+        case 'addHasOne': return relatedHasOneOps(value);
+        case 'replaceHasOne': return relatedHasOneOps(value);
+        case 'removeHasOne': return relatedHasOneOps(this._retrieve(path));
 
-        case 'addHasMany': return relatedLinkOps(Object.keys(operation.value));
-        case 'replaceHasMany': return relatedLinkOps(Object.keys(operation.value));
-        case 'removeHasMany': return relatedLinkOps(Object.keys(this._retrieve(path)));
-        case 'addToHasMany': return relatedLinkOps(path[4]);
-        case 'removeFromHasMany': return relatedLinkOps(path[4]);
+        case 'addHasMany': return relatedHasManyOps(operation.value);
+        case 'replaceHasMany': return relatedHasManyOps(operation.value);
+        case 'removeHasMany': return relatedHasManyOps(this._retrieve(path));
+        case 'addToHasMany': return relatedHasOneOps(path[4]);
+        case 'removeFromHasMany': return relatedHasOneOps(path[4]);
 
-        case 'addRecord': return addRelatedLinksOpsForRecord(value);
-        case 'removeRecord': return removeRelatedLinksOpsForRecord(this._retrieve(path));
+        case 'addRecord': return relatedLinksOpsForRecord(value);
+        case 'removeRecord': return relatedLinksOpsForRecord(this._retrieve(path));
 
         default: return [];
       }
