@@ -1031,24 +1031,23 @@ define('orbit-common/operation-processors/related-inverse-links', ['exports', 'o
       var operationType = this._operationEncoder.identify(operation);
 
       function relatedLinkOps(linkValue, linkDef){
+        if(linkValue === OC['default'].LINK_NOT_INITIALIZED) return [];
         linkDef = linkDef || schema.linkDefinition(type, path[3]);
+        var relIds = linkDef.type === 'hasMany' ? Object.keys(linkValue||{}) : linkValue;
         var op = operation.op;
         var ignoredPaths = op === 'remove' ? condemnedPaths : [];
-        return _this._relatedLinkOps(linkDef, linkValue, path[1], operation, ignoredPaths);
+        return _this._relatedLinkOps(linkDef, relIds, path[1], operation, ignoredPaths);
       }
 
       function addRelatedLinksOpsForRecord(record){
         if (!record.__rel) return;
-        var linkDef;
         var ops = [];
 
         Object.keys(record.__rel).forEach(function(link) {
-          linkDef = schema.linkDefinition(type, link);
-          var linkValue = record.__rel[link];
+          var linkDef = schema.linkDefinition(type, link);
 
-          if (linkDef.inverse && linkValue !== OC['default'].LINK_NOT_INITIALIZED) {
-            var relIds = linkDef.type === 'hasMany' ? Object.keys(linkValue||{}) : linkValue;
-            var linkOps = relatedLinkOps(relIds, linkDef);
+          if (linkDef.inverse) {
+            var linkOps = relatedLinkOps(record.__rel[link], linkDef);
 
             for(var i = 0; i < linkOps.length; i++){
               ops.push(linkOps[i]);
@@ -1061,16 +1060,13 @@ define('orbit-common/operation-processors/related-inverse-links', ['exports', 'o
 
       function removeRelatedLinksOpsForRecord(record){
         if (!record || !record.__rel) return [];
-        var linkDef;
         var ops = [];
 
         Object.keys(record.__rel).forEach(function(link) {
-          linkDef = schema.linkDefinition(type, link);
-          var linkValue = record.__rel[link];
+          var linkDef = schema.linkDefinition(type, link);
 
-          if (linkDef.inverse && linkValue !== OC['default'].LINK_NOT_INITIALIZED) {
-            var relIds = linkDef.type === 'hasMany' ? Object.keys(linkValue||{}) : linkValue;
-            var linkOps = relatedLinkOps(relIds, linkDef);
+          if (linkDef.inverse) {
+            var linkOps = relatedLinkOps(record.__rel[link], linkDef);
 
             for(var i = 0; i < linkOps.length; i++){
               ops.push(linkOps[i]);
