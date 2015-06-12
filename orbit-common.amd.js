@@ -178,13 +178,15 @@ define('orbit-common/cache', ['exports', 'orbit-common/main', 'orbit/document', 
       } else {
         normalizedOperation = new Operation['default'](operation);
       }
-
       var op = normalizedOperation.op;
       var path = normalizedOperation.path;
       var value = normalizedOperation.value;
-      var currentValue = this.retrieve(path);
+
       var _this = this;
       var dependentOperations = [];
+
+      var operationType = this._operationEncoder.identify(normalizedOperation);
+
       var pushOps = function(ops) {
         if (ops) {
           if (ops.forEach) {
@@ -208,30 +210,30 @@ define('orbit-common/cache', ['exports', 'orbit-common/main', 'orbit/document', 
 
       // console.log('Cache#transform', op, path.join('/'), value);
 
-      if (op !== 'add' && op !== 'remove' && op !== 'replace') {
-        throw new exceptions.OperationNotAllowed('Cache#transform requires an "add", "remove" or "replace" operation.');
-      }
-
-      if (path.length < 2) {
-        throw new exceptions.OperationNotAllowed('Cache#transform requires an operation with a path >= 2 segments.');
-      }
-
-      if (op === 'add' || op === 'replace') {
-        if (!this.exists(path.slice(0, path.length - 1))) {
+      if(operationType !== 'addRecord'){
+        if (!this.exists([path[0], path[1]])) {
           return false;
         }
+      }
 
-      } else if (op === 'remove') {
+      if (op === 'remove') {
         if (this._isMarkedForRemoval(path)) {
           // console.log('remove op not required because marked for removal', path);
           return false;
         }
       }
 
+
+      var currentValue = this.retrieve(path);
+
       if (eq.eq(currentValue, value)) return false;
 
       if (this.maintainDependencies) {
         pushOps(this._dependentOps(normalizedOperation));
+      }
+
+      if(this._operationEncoder.isLinkOp(operation)){
+        this._ensureLinkIsInitialized(path[0], path[1], path[3]);
       }
 
       if (op === 'remove' || op === 'replace') {
@@ -291,6 +293,15 @@ define('orbit-common/cache', ['exports', 'orbit-common/main', 'orbit/document', 
       performDependentOps();
 
       return true;
+    },
+
+    _ensureLinkIsInitialized: function(type, id, link){
+      var linkValue = this.retrieveLink(type, id, link);
+      var linkDefinition = this.schema.linkDefinition(type, link);
+
+      if(linkValue === OC['default'].LINK_NOT_INITIALIZED) {
+        this._doc.transform(this._operationEncoder.initializeLinkOp(type, id, link));
+      }
     },
 
     _markForRemoval: function(path) {
@@ -641,7 +652,7 @@ define('orbit-common/main', ['exports'], function (exports) {
 	 */
 	var OC = {};
 
-	OC.LINK_NOT_INITIALIZED = "___link_not_initialized___";
+	OC.LINK_NOT_INITIALIZED = undefined;
 
 	exports['default'] = OC;
 
@@ -908,6 +919,7 @@ define('orbit-common/operation-encoder', ['exports', 'orbit-common/main', 'orbit
           }
           else if(path.length === 5){
             if(op === 'add') return 'addToHasMany';
+            if(op === 'replace') return 'addToHasMany';
             if(op === 'remove') return 'removeFromHasMany';
           }
         }
@@ -946,6 +958,10 @@ define('orbit-common/operation-encoder', ['exports', 'orbit-common/main', 'orbit
 
     linkOp: function(op, type, id, key, value){
       return this[op + 'LinkOp'](type, id, key, value);
+    },
+
+    isLinkOp: function(operation){
+      return operation.path[2] === '__rel';
     },
 
     addLinkOp: function(type, id, key, value) {
@@ -1004,6 +1020,17 @@ define('orbit-common/operation-encoder', ['exports', 'orbit-common/main', 'orbit
       return new Operation['default']({
         op: op,
         path: path,
+        value: value
+      });
+    },
+
+    initializeLinkOp: function(type, id, link){
+      var linkType = this._schema.linkDefinition(type, link).type;
+      var value = linkType === 'hasMany' ? {} : null;
+
+      return new Operation['default']({
+        op: 'add',
+        path: [type, id, '__rel', link],
         value: value
       });
     }
@@ -1112,9 +1139,6 @@ define('orbit-common/operation-processors/related-inverse-links', ['exports', 'o
 
     _relatedLinkOp: function(type, id, link, value, parentOperation, relatedOp, ignoredPaths){
       if (this._retrieve([type, id])) {
-
-        if(!this._cache.isLinkInitialized(type, id, link)) return;
-
         var operation = this._operationEncoder.linkOp(relatedOp, type, id, link, value);
         var path = operation.path.join("/");
         var isIgnoredPath = ignoredPaths.indexOf(path) > -1;
@@ -1620,16 +1644,12 @@ define('orbit-common/source', ['exports', 'orbit/main', 'orbit-common/main', 'or
       id = this._normalizeId(type, id);
       value = this._normalizeLink(type, key, value);
 
-      this._confirmLinkIsInitialized(type, id, key);
-
       return this.transform(this._operationEncoder.addLinkOp(type, id, key, value));
     },
 
     _removeLink: function(type, id, key, value) {
       id = this._normalizeId(type, id);
       value = this._normalizeLink(type, key, value);
-
-      this._confirmLinkIsInitialized(type, id, key);
 
       return this.transform(this._operationEncoder.removeLinkOp(type, id, key, value));
     },
@@ -1639,8 +1659,6 @@ define('orbit-common/source', ['exports', 'orbit/main', 'orbit-common/main', 'or
 
       assert.assert('hasMany links can only be replaced when flagged as `actsAsSet`',
              linkDef.type !== 'hasMany' || linkDef.actsAsSet);
-
-      this._confirmLinkIsInitialized(type, id, key);
 
       id = this._normalizeId(type, id);
       value = this._normalizeLink(type, key, value);
@@ -1713,13 +1731,6 @@ define('orbit-common/source', ['exports', 'orbit/main', 'orbit-common/main', 'or
     _isLinkEmpty: function(linkType, linkValue) {
       return (linkType === 'hasMany' && linkValue && linkValue.length === 0 ||
               linkType === 'hasOne' && objects.isNone(linkValue));
-    },
-
-    _confirmLinkIsInitialized: function(type, id, link){
-      id = this.getId(type, id);
-      var linkValue = this.retrieveLink(type, id, link);
-
-      if(linkValue === OC['default'].LINK_NOT_INITIALIZED) throw new exceptions.LinkNotInitializedException(type, id, link);
     }
   });
 
