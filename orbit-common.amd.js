@@ -496,13 +496,15 @@ define('orbit-common/cache', ['exports', 'orbit-common/main', 'orbit/document', 
           linkSchema = _this.schema.linkDefinition(type, link);
           linkValue = value.__rel[link];
 
-          if (linkSchema.type === 'hasMany') {
-            Object.keys(linkValue).forEach(function(v) {
-              _this._removeRevLink(linkSchema, type, id, link, v);
-            });
+          if (linkValue) {
+            if (linkSchema.type === 'hasMany') {
+              Object.keys(linkValue).forEach(function(v) {
+                _this._removeRevLink(linkSchema, type, id, link, v);
+              });
 
-          } else {
-            _this._removeRevLink(linkSchema, type, id, link, linkValue);
+            } else {
+              _this._removeRevLink(linkSchema, type, id, link, linkValue);
+            }
           }
         });
       }
