@@ -1691,6 +1691,8 @@ define('orbit/lib/operations', ['exports', 'orbit/lib/objects', 'orbit/document'
   }
 
   function _mergeLinkWithRecord(superceded, superceding){
+    if(superceded.op === 'remove') return superceded;
+
     var record = superceded.value;
     var linkName = superceding.path[3];
     var linkId = superceding.path[4];
